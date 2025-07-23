@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Farming Tycoon</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: sans-serif;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #d0f0c0;
+    }
+    .screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 20px;
+    }
+    .active {
+      display: flex;
+    }
+    button {
+      padding: 12px 24px;
+      margin: 10px;
+      font-size: 18px;
+      border-radius: 12px;
+      border: none;
+      background-color: #4CAF50;
+      color: white;
+      cursor: pointer;
+      user-select: none;
+    }
+    .game-ui {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      font-weight: bold;
+      z-index: 100;
+      background: rgba(255 255 255 / 0.8);
+      padding: 10px 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px #0003;
+    }
+    .field {
+      margin-top: 80px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      max-width: 360px;
+    }
+    .tile {
+      width: 60px;
+      height: 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      position: relative;
+      user-select: none;
+      background-color: #7cfc00; /* default grass */
+      color: black;
+      font-weight: bold;
+    }
+    .farmland {
+      background: #8b5a2b;
+      color: white;
+    }
+    .countdown {
+      font-size: 11px;
+      color: #222;
+      margin-top: 2px;
+      user-select: none;
+    }
+    .popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border: 2px solid #333;
+      border-radius: 12px;
+      display: none;
+      z-index: 1000;
+      max-width: 90vw;
+      text-align: center;
+      user-select: none;
+    }
+    .popup.active {
+      display: block;
+    }
+    .collect-display {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(255 255 255 / 0.9);
+      border-radius: 10px;
+      padding: 10px 20px;
+      box-shadow: 0 0 8px #0004;
+      font-weight: bold;
+      font-size: 16px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      user-select: none;
+      z-index: 1100;
+    }
+    .collect-display.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <!-- Home Screen -->
+  <div id="homeScreen" class="screen active">
+    <h1>Farming Tycoon</h1>
+    <button onclick="startGame()">Start Game</button>
+    <button onclick="showHowToPlay()">How to Play</button>
+  </div>
+
+  <!-- How to Play Screen -->
+  <div id="howToPlay" class="screen">
+    <h2>How to Play</h2>
+    <ul style="text-align:left; max-width: 360px;">
+      <li>Tap brown farmland to choose crops to plant.</li>
+      <li>Tap green grass to place buildings like coops, barns, and stores.</li>
+      <li>Tap a crop to see time left to harvest and collect when ready.</li>
+      <li>Tap a building to see timer or sell items in store.</li>
+      <li>Collected items appear in top right and can be sold at the store.</li>
+      <li>Manage your farm and earn coins to expand!</li>
+    </ul>
+    <button onclick="goHome()">Back</button>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="gameScreen" class="screen">
+    <div class="game-ui">
+      <button onclick="goHome()">🏠 Home</button>
+      <div>Coins: <span id="coins">0</span></div>
+      <div>🥚 Eggs: <span id="eggs">0</span> | 🥛 Milk: <span id="milk">0</span> | 🍖 Pork: <span id="pork">0</span></div>
+    </div>
+
+    <h2>Your Farm</h2>
+    <div class="field" id="field"></div>
+  </div>
+
+  <!-- Popups -->
+  <div id="coopPopup" class="popup"></div>
+  <div id="storePopup" class="popup"></div>
+  <div id="plantPopup" class="popup"></div>
+  <div id="placePopup" class="popup"></div>
+  <div id="cropPopup" class="popup"></div>
+
+  <!-- Collection Feedback -->
+  <div id="collectDisplay" class="collect-display"></div>
+
+  <script>
+    // Screens
+    const screens = {
+      home: document.getElementById("homeScreen"),
+      how: document.getElementById("howToPlay"),
+      game: document.getElementById("gameScreen")
+    };
+
+    function showScreen(screenName) {
+      for (let screen in screens) {
+        screens[screen].classList.remove("active");
+      }
+      screens[screenName].classList.add("active");
+    }
+
+    function goHome() {
+      showScreen("home");
+      saveGame();
+    }
+
+    function showHowToPlay() {
+      showScreen("how");
+    }
+
+    function startGame() {
+      loadGame();
+      showScreen("game");
+    }
+
+    // Elements
+    const field = document.getElementById("field");
+    const coinsDisplay = document.getElementById("coins");
+    const eggsDisplay = document.getElementById("eggs");
+    const milkDisplay = document.getElementById("milk");
+    const porkDisplay = document.getElementById("pork");
+
+    const coopPopup = document.getElementById("coopPopup");
+    const storePopup = document.getElementById("storePopup");
+    const plantPopup = document.getElementById("plantPopup");
+    const placePopup = document.getElementById("placePopup");
+    const cropPopup = document.getElementById("cropPopup");
+    const collectDisplay = document.getElementById("collectDisplay");
+
+    // Game state
+    let coins = 0;
+    let eggs = 0;
+    let milk = 0;
+    let pork = 0;
+
+    // Production timers start timestamps
+    let coopTimerStart = 0;
+    let cowTimerStart = 0;
+    let pigTimerStart = 0;
+
+    // Buildings references
+    let coopTile = null;
+    let storeTile = null;
+    let cowBarnTile = null;
+    let pigFarmTile = null;
+
+    // Production intervals (ms)
+    const coopProduceInterval = 30000;  // 30 sec
+    const cowProduceInterval = 30000;   // 30 sec
+    const pigProduceInterval = 60000;   // 60 sec
+
+    // Crops data
+    const cropOptions = [
+      { emoji: "🌾", name: "Wheat", cost: 10, growTime: 20 },
+      { emoji: "🥬", name: "Lettuce", cost: 50, growTime: 40 },
+      { emoji: "🌽", name: "Corn", cost: 100, growTime: 60 },
+      { emoji: "🍓", name: "Strawberries", cost: 1000, growTime: 120 },
+      { emoji: "🍎", name: "Apple Tree", cost: 500, growTime: 180 }
+    ];
+
+    // Crops state: {tileIndex: {cropIndex, plantedAt, collected}}
+    let cropsState = {};
+
+    // Utility: Show popup with content
+    function showPopup(popup, content) {
+      popup.innerHTML = content;
+      popup.classList.add("active");
+    }
+    function hidePopup(popup) {
+      popup.classList.remove("active");
+    }
+
+    // Show a quick collection message in top-right
+    function showCollectionMessage(text) {
+      collectDisplay.textContent = text;
+      collectDisplay.classList.add("show");
+      clearTimeout(collectDisplay._timeout);
+      collectDisplay._timeout = setTimeout(() => {
+        collectDisplay.classList.remove("show");
+      }, 2000);
+    }
+
+    // Update UI and save game
+    function updateStats() {
+      coinsDisplay.textContent = coins;
+      eggsDisplay.textContent = eggs;
+      milkDisplay.textContent = milk;
+      porkDisplay.textContent = pork;
+      updateBuildingCountdowns();
+      saveGame();
+    }
+
+    // Save game state to localStorage
+    function saveGame() {
+      localStorage.setItem("farmCoins", coins);
+      localStorage.setItem("farmEggs", eggs);
+      localStorage.setItem("farmMilk", milk);
+      localStorage.setItem("farmPork", pork);
+      localStorage.setItem("coopTimerStart", coopTimerStart);
+      localStorage.setItem("cowTimerStart", cowTimerStart);
+      localStorage.setItem("pigTimerStart", pigTimerStart);
+      localStorage.setItem("cropsState", JSON.stringify(cropsState));
+      localStorage.setItem("buildings", JSON.stringify({
+        coop: coopTile ? coopTile.dataset.index : null,
+        store: storeTile ? storeTile.dataset.index : null,
+        cowBarn: cowBarnTile ? cowBarnTile.dataset.index : null,
+        pigFarm: pigFarmTile ? pigFarmTile.dataset.index : null
+      }));
+    }
+
+    // Load game state from localStorage
+    function loadGame() {
+      coins = parseInt(localStorage.getItem("farmCoins")) || 1000;
+      eggs = parseInt(localStorage.getItem("farmEggs")) || 0;
+      milk = parseInt(localStorage.getItem("farmMilk")) || 0;
+      pork = parseInt(localStorage.getItem("farmPork")) || 0;
+
+      coopTimerStart = parseInt(localStorage.getItem("coopTimerStart")) || Date.now();
+      cowTimerStart = parseInt(localStorage.getItem("cowTimerStart")) || Date.now();
+      pigTimerStart = parseInt(localStorage.getItem("pigTimerStart")) || Date.now();
+
+      cropsState = JSON.parse(localStorage.getItem("cropsState")) || {};
+      const buildings = JSON.parse(localStorage.getItem("buildings")) || {};
+
+      field.innerHTML = "";
+
+      for (let i = 0; i < 25; i++) {
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        tile.dataset.index = i;
+        const isFarmland = i % 5 < 3;
+        tile.classList.add(isFarmland ? "farmland" : "grass");
+
+        // If crop planted on farmland
+        if(cropsState[i]) {
+          let crop = cropOptions[cropsState[i].cropIndex];
+          tile.textContent = crop.emoji;
+          tile.onclick = () => onCropClick(i);
+        }
+        // Buildings
+        else if (buildings.coop == i) {
+          tile.textContent = "🐔";
+          coopTile = tile;
+          tile.onclick = showCoopPopup;
+          addCountdownLabel(tile);
+        }
+        else if (buildings.store == i) {
+          tile.textContent = "🏪";
+          storeTile = tile;
+          tile.onclick = showStorePopup;
+        }
+        else if (buildings.cowBarn == i) {
+          tile.textContent = "🐄";
+          cowBarnTile = tile;
+          tile.onclick = showCowPopup;
+          addCountdownLabel(tile);
+        }
+        else if (buildings.pigFarm == i) {
+          tile.textContent = "🐖";
+          pigFarmTile = tile;
+          tile.onclick = showPigPopup;
+          addCountdownLabel(tile);
+        }
+        else {
+          tile.onclick = () => onTileClick(tile);
+        }
+        field.appendChild(tile);
+      }
+
+      updateStats();
+    }
+
+    // Add countdown label for buildings
+    function addCountdownLabel(tile) {
+      let label = tile.querySelector(".countdown");
+      if(!label) {
+        label = document.createElement("div");
+        label.className = "countdown";
+        tile.appendChild(label);
+      }
+    }
+
+    // Update countdown timers on building tiles and produce goods when ready
+    function updateBuildingCountdowns() {
+      if(coopTile) {
+        let elapsed = Date.now() - coopTimerStart;
+        let left = coopProduceInterval - elapsed;
+        if(left <= 0){
+          eggs++;
+          coopTimerStart = Date.now();
+          left = coopProduceInterval;
+          showCollectionMessage("🥚 Egg collected!");
+        }
+        coopTile.querySelector(".countdown").textContent = `Egg in ${Math.ceil(left/1000)}s`;
+      }
+      if(cowBarnTile) {
+        let elapsed = Date.now() - cowTimerStart;
+        let left = cowProduceInterval - elapsed;
+        if(left <= 0){
+          milk++;
+          cowTimerStart = Date.now();
+          left = cowProduceInterval;
+          showCollectionMessage("🥛 Milk collected!");
+        }
+        cowBarnTile.querySelector(".countdown").textContent = `Milk in ${Math.ceil(left/1000)}s`;
+      }
+      if(pigFarmTile) {
+        let elapsed = Date.now() - pigTimerStart;
+        let left = pigProduceInterval - elapsed;
+        if(left <= 0){
+          pork++;
+          pigTimerStart = Date.now();
+          left = pigProduceInterval;
+          showCollectionMessage("🍖 Pork collected!");
+        }
+        pigFarmTile.querySelector(".countdown").textContent = `Pork in ${Math.ceil(left/1000)}s`;
+      }
+    }
+
+    // Click farmland or grass tile
+    function onTileClick(tile) {
+      if(tile.classList.contains("farmland")) {
+        if(tile.textContent) return; // Already planted
+        // Show plant options
+        let html = cropOptions.map((c,i) =>
+          `<button onclick="plantCrop(${tile.dataset.index},${i})">${c.emoji} ${c.name} (${c.cost} coins)</button>`
+        ).join("<br>");
+        showPopup(plantPopup, `Plant what?<br>${html}<br><button onclick="hidePopup(plantPopup)">Cancel</button>`);
+      } else {
+        // Grass tile, place building options
+        let html = `
+          <button onclick="placeBuilding(${tile.dataset.index}, 'coop')">Chicken Coop 🐔 (250 coins)</button><br>
+          <button onclick="placeBuilding(${tile.dataset.index}, 'store')">Store 🏪 (Free)</button><br>
+          <button onclick="placeBuilding(${tile.dataset.index}, 'cow')">Cow Barn 🐄 (2000 coins)</button><br>
+          <button onclick="placeBuilding(${tile.dataset.index}, 'pig')">Pig Farm 🐖 (10000 coins)</button><br>
+          <button onclick="hidePopup(placePopup)">Cancel</button>
+        `;
+        showPopup(placePopup, `Place what here?<br>${html}`);
+      }
+    }
+
+    // Plant crop on farmland tile
+    function plantCrop(tileIndex, cropIndex) {
+      const crop = cropOptions[cropIndex];
+      if(coins < crop.cost) {
+        alert("Not enough coins!");
+        hidePopup(plantPopup);
+        return;
+      }
+      coins -= crop.cost;
+      cropsState[tileIndex] = {
+        cropIndex,
+        plantedAt: Date.now(),
+        collected: false
+      };
+      const tile = field.children[tileIndex];
+      tile.textContent = crop.emoji;
+      tile.onclick = () => onCropClick(tileIndex);
+      updateStats();
+      hidePopup(plantPopup);
+    }
+
+    // Click crop tile to check timer or collect
+    function onCropClick(tileIndex) {
+      const state = cropsState[tileIndex];
+      if(!state) return;
+      const crop = cropOptions[state.cropIndex];
+      const elapsed = (Date.now() - state.plantedAt) / 1000;
+      const timeLeft = Math.max(0, crop.growTime - elapsed);
+      cropPopup.dataset.tileIndex = tileIndex;
+      if(state.collected) {
+        alert("Already collected!");
+        return;
+      }
+      if(timeLeft > 0) {
+        showPopup(cropPopup,
+          `Time left to harvest: ${Math.ceil(timeLeft)}s<br>`+
+          `<button onclick="hidePopup(cropPopup)">Close</button>`);
+      } else {
+        showPopup(cropPopup,
+          `Ready to collect!<br>`+
+          `<button onclick="collectCrop(${tileIndex})">Collect</button><br>`+
+          `<button onclick="hidePopup(cropPopup)">Cancel</button>`);
+      }
+    }
+
+    // Collect crop harvest
+    function collectCrop(tileIndex) {
+      const state = cropsState[tileIndex];
+      if(!state || state.collected) return;
+      const crop = cropOptions[state.cropIndex];
+      state.collected = true;
+      coins += crop.cost * 2;  // Double cost payout
+      const tile = field.children[tileIndex];
+      tile.textContent = "";
+      tile.onclick = () => onTileClick(tile);
+      delete cropsState[tileIndex];
+      updateStats();
+      hidePopup(cropPopup);
+      showCollectionMessage(`+${crop.cost * 2} coins from ${crop.name}!`);
+    }
+
+    // Place buildings on grass tiles
+    function placeBuilding(tileIndex, buildingType) {
+      const tile = field.children[tileIndex];
+
+      // Check if already occupied
+      if(tile.textContent !== "") {
+        alert("Tile already occupied!");
+        hidePopup(placePopup);
+        return;
+      }
+
+      if(buildingType === "coop") {
+        if(coins < 250) {
+          alert("Not enough coins for Chicken Coop!");
+          hidePopup(placePopup);
+          return;
+        }
+        if(coopTile) {
+          alert("You already have a Chicken Coop!");
+          hidePopup(placePopup);
+          return;
+        }
+        coins -= 250;
+        tile.textContent = "🐔";
+        coopTile = tile;
+        coopTimerStart = Date.now();
+        tile.onclick = showCoopPopup;
+        addCountdownLabel(tile);
+        showCollectionMessage("Chicken Coop placed!");
+      }
+      else if(buildingType === "store") {
+        if(storeTile) {
+          alert("You already have a Store!");
+          hidePopup(placePopup);
+          return;
+        }
+        tile.textContent = "🏪";
+        storeTile = tile;
+        tile.onclick = showStorePopup;
+        showCollectionMessage("Store placed!");
+      }
+      else if(buildingType === "cow") {
+        if(coins < 2000) {
+          alert("Not enough coins for Cow Barn!");
+          hidePopup(placePopup);
+          return;
+        }
+        if(cowBarnTile) {
+          alert("You already have a Cow Barn!");
+          hidePopup(placePopup);
+          return;
+        }
+        coins -= 2000;
+        tile.textContent = "🐄";
+        cowBarnTile = tile;
+        cowTimerStart = Date.now();
+        tile.onclick = showCowPopup;
+        addCountdownLabel(tile);
+        showCollectionMessage("Cow Barn placed!");
+      }
+      else if(buildingType === "pig") {
+        if(coins < 10000) {
+          alert("Not enough coins for Pig Farm!");
+          hidePopup(placePopup);
+          return;
+        }
+        if(pigFarmTile) {
+          alert("You already have a Pig Farm!");
+          hidePopup(placePopup);
+          return;
+        }
+        coins -= 10000;
+        tile.textContent = "🐖";
+        pigFarmTile = tile;
+        pigTimerStart = Date.now();
+        tile.onclick = showPigPopup;
+        addCountdownLabel(tile);
+        showCollectionMessage("Pig Farm placed!");
+      }
+
+      updateStats();
+      hidePopup(placePopup);
+    }
+
+    // Show coop popup (info only)
+    function showCoopPopup() {
+      const html = `
+        <b>Chicken Coop</b><br>
+        Produces 1 egg every 30 seconds.<br>
+        Eggs can be sold in the Store.<br>
+        <button onclick="hidePopup(coopPopup)">Close</button>
+      `;
+      showPopup(coopPopup, html);
+    }
+
+    // Show cow barn popup (info only)
+    function showCowPopup() {
+      const html = `
+        <b>Cow Barn</b><br>
+        Produces 1 milk bucket every 30 seconds.<br>
+        Milk can be sold in the Store.<br>
+        <button onclick="hidePopup(coopPopup)">Close</button>
+      `;
+      showPopup(coopPopup, html);
+    }
+
+    // Show pig farm popup (info only)
+    function showPigPopup() {
+      const html = `
+        <b>Pig Farm</b><br>
+        Produces 1 pork chop every 60 seconds.<br>
+        Pork can be sold in the Store.<br>
+        <button onclick="hidePopup(coopPopup)">Close</button>
+      `;
+      showPopup(coopPopup, html);
+    }
+
+    // Show store popup for selling all collected items
+    function showStorePopup() {
+      if(eggs + milk + pork === 0) {
+        alert("You have no items to sell!");
+        return;
+      }
+      let earnings =
+        eggs * 20 +
+        milk * 100 +
+        pork * 500;
+      let html = `
+        <b>Store</b><br>
+        Sell all collected items:<br>
+        🥚 Eggs (${eggs}) x 20 coins<br>
+        🥛 Milk (${milk}) x 100 coins<br>
+        🍖 Pork (${pork}) x 500 coins<br><br>
+        Total earnings: ${earnings} coins<br>
+        <button onclick="sellAll()">Sell All</button>
+        <button onclick="hidePopup(storePopup)">Cancel</button>
+      `;
+      showPopup(storePopup, html);
+    }
+
+    // Sell all items and update coins & reset items
+    function sellAll() {
+      let earnings =
+        eggs * 20 +
+        milk * 100 +
+        pork * 500;
+      if(earnings === 0) {
+        alert("No items to sell!");
+        hidePopup(storePopup);
+        return;
+      }
+      coins += earnings;
+      showCollectionMessage(`Sold items for +${earnings} coins!`);
+      eggs = 0;
+      milk = 0;
+      pork = 0;
+      updateStats();
+      hidePopup(storePopup);
+    }
+
+    // Game loop update every second to refresh timers
+    setInterval(() => {
+      if(screens.game.classList.contains("active")) {
+        updateBuildingCountdowns();
+      }
+    }, 1000);
+
+    // Init blank farm on first load
+    function initFarm() {
+      coins = 1000;
+      eggs = 0;
+      milk = 0;
+      pork = 0;
+      coopTimerStart = Date.now();
+      cowTimerStart = Date.now();
+      pigTimerStart = Date.now();
+      cropsState = {};
+      coopTile = null;
+      storeTile = null;
+      cowBarnTile = null;
+      pigFarmTile = null;
+      field.innerHTML = "";
+      for(let i=0; i<25; i++) {
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        tile.dataset.index = i;
+        if(i % 5 < 3) {
+          tile.classList.add("farmland");
+        } else {
+          tile.classList.add("grass");
+        }
+        tile.onclick = () => onTileClick(tile);
+        field.appendChild(tile);
+      }
+      updateStats();
+      saveGame();
+    }
+
+    // On first load if no saved game, init farm
+    window.onload = () => {
+      if(localStorage.getItem("farmCoins") === null) {
+        initFarm();
+      } else {
+        loadGame();
+      }
+    };
+  </script>
+</body>
+</html>
